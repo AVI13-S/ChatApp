@@ -11,6 +11,7 @@ import com.ChatApp.demo.repository.ChatMessageRepository;
 import com.ChatApp.demo.repository.ChatUserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -24,10 +25,13 @@ import java.util.List;
 public class ChatService {
 
     private static final int MAX_USERS = 10;
+    private static final String USERS_TOPIC = "/topic/users";
+    private static final String MESSAGES_TOPIC = "/topic/messages";
 
     private final ChatUserRepository userRepository;
     private final ChatMessageRepository messageRepository;
     private final ChatMapper mapper;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public synchronized UserResponse join(UserRequest request) {
         String username = request.username().trim();
@@ -40,12 +44,14 @@ public class ChatService {
         }
 
         ChatUser saved = userRepository.save(new ChatUser(username));
+        broadcastUsers();
         return mapper.toResponse(saved);
     }
 
     @Transactional
     public void leave(UserRequest request) {
         userRepository.deleteByUsernameIgnoreCase(request.username().trim());
+        broadcastUsers();
     }
 
     public List<UserResponse> getUsers() {
@@ -60,12 +66,18 @@ public class ChatService {
         }
 
         ChatMessage saved = messageRepository.save(new ChatMessage(sender, request.content().trim()));
-        return mapper.toResponse(saved);
+        MessageResponse response = mapper.toResponse(saved);
+        messagingTemplate.convertAndSend(MESSAGES_TOPIC, response);
+        return response;
     }
 
     public List<MessageResponse> getLatestMessages() {
         List<ChatMessage> messages = new ArrayList<>(messageRepository.findTop50ByOrderBySentAtDesc());
         Collections.reverse(messages);
         return messages.stream().map(mapper::toResponse).toList();
+    }
+
+    private void broadcastUsers() {
+        messagingTemplate.convertAndSend(USERS_TOPIC, getUsers());
     }
 }

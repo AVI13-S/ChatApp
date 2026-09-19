@@ -7,12 +7,12 @@
     <style>
         :root {
             --bg: #eef1f5; --card: #ffffff; --text: #1f2937; --muted: #6b7280;
-            --accent: #2563eb; --mine: #dbeafe; --other: #f3f4f6; --line: #e5e7eb; --error: #dc2626;
+            --accent: #2563eb; --mine: #dbeafe; --other: #f3f4f6; --line: #e5e7eb; --error: #dc2626; --ok: #16a34a;
         }
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg: #0f1216; --card: #181d24; --text: #e5e7eb; --muted: #9ca3af;
-                --accent: #3b82f6; --mine: #1e3a5f; --other: #232a33; --line: #2a323d; --error: #f87171;
+                --accent: #3b82f6; --mine: #1e3a5f; --other: #232a33; --line: #2a323d; --error: #f87171; --ok: #4ade80;
             }
         }
         * { box-sizing: border-box; }
@@ -32,7 +32,9 @@
             display: flex; justify-content: space-between; align-items: center; gap: 10px;
         }
         header h1 { font-size: 17px; margin: 0; }
-        #online { font-size: 12px; color: var(--muted); text-align: right; }
+        #status { font-size: 12px; color: var(--muted); }
+        #status.live { color: var(--ok); }
+        #online { font-size: 12px; color: var(--muted); text-align: right; flex: 1; }
         #joinView { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; gap: 12px; }
         #chatView { flex: 1; display: none; flex-direction: column; min-height: 0; }
         input[type=text] {
@@ -65,6 +67,7 @@
     <header>
         <h1>Group Chat</h1>
         <div id="online"></div>
+        <span id="status"></span>
         <button id="leaveBtn" class="ghost" style="display:none">Leave</button>
     </header>
 
@@ -85,23 +88,21 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
 <script>
     const API = '/api/chat';
-    const MESSAGE_POLL_MS = 1500;
-    const USERS_POLL_MS = 4000;
 
     const $ = id => document.getElementById(id);
     const seen = new Set();
-    let me = sessionStorage.getItem('chatUser');
-    let messageTimer = null;
-    let usersTimer = null;
+    let me = null;
+    let client = null;
 
-    async function request(path, method, body, keepalive) {
+    /* ---------- small REST helper (join, leave, history, users) ---------- */
+    async function request(path, method, body) {
         const res = await fetch(API + path, {
             method: method || 'GET',
             headers: { 'Content-Type': 'application/json' },
-            body: body ? JSON.stringify(body) : undefined,
-            keepalive: !!keepalive
+            body: body ? JSON.stringify(body) : undefined
         });
         if (res.status === 204) {
             return null;
@@ -111,26 +112,25 @@
             const detail = data.errors && data.errors.length
                 ? data.errors.map(e => e.field + ' ' + e.defaultMessage).join(', ')
                 : data.message;
-            const error = new Error(detail || ('Request failed (' + res.status + ')'));
-            error.status = res.status;
-            throw error;
+            throw new Error(detail || ('Request failed (' + res.status + ')'));
         }
         return data;
     }
 
     /* ---------- join / leave ---------- */
-    async function join(name) {
-        await request('/join', 'POST', { username: name });
-        me = name;
-        sessionStorage.setItem('chatUser', me);
-        showChat();
-    }
-
     $('joinBtn').onclick = async () => {
         $('joinError').textContent = '';
+        if (typeof StompJs === 'undefined') {
+            $('joinError').textContent = 'Could not load the chat library. Check your internet connection and reload.';
+            return;
+        }
+        const name = $('usernameInput').value.trim();
         $('joinBtn').disabled = true;
         try {
-            await join($('usernameInput').value.trim());
+            await request('/join', 'POST', { username: name });
+            me = name;
+            showChat();
+            connect();
         } catch (e) {
             $('joinError').textContent = e.message;
         }
@@ -142,44 +142,73 @@
 
     $('leaveBtn').onclick = async () => {
         try { await request('/leave', 'POST', { username: me }); } catch (e) { /* ignore */ }
-        sessionStorage.removeItem('chatUser');
+        if (client) { client.deactivate(); }
         location.reload();
     };
-
-    // Free the seat when the tab is closed
-    window.addEventListener('pagehide', () => {
-        if (me) {
-            request('/leave', 'POST', { username: me }, true).catch(() => {});
-        }
-    });
-
-    function showJoin(message) {
-        clearInterval(messageTimer);
-        clearInterval(usersTimer);
-        me = null;
-        sessionStorage.removeItem('chatUser');
-        $('chatView').style.display = 'none';
-        $('leaveBtn').style.display = 'none';
-        $('joinView').style.display = 'flex';
-        $('joinError').textContent = message || '';
-    }
 
     function showChat() {
         $('joinView').style.display = 'none';
         $('chatView').style.display = 'flex';
         $('leaveBtn').style.display = 'inline-block';
-        loadMessages();
-        loadUsers();
-        messageTimer = setInterval(loadMessages, MESSAGE_POLL_MS);
-        usersTimer = setInterval(loadUsers, USERS_POLL_MS);
         $('messageInput').focus();
     }
 
+    /* ---------- WebSocket (STOMP) ---------- */
+    function setStatus(text, live) {
+        $('status').textContent = text;
+        $('status').className = live ? 'live' : '';
+    }
+
+    function connect() {
+        // https page => secure wss:// connection, http page => ws://
+        const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+        setStatus('connecting...', false);
+
+        client = new StompJs.Client({
+            brokerURL: scheme + location.host + '/ws',
+            connectHeaders: { username: me },
+            reconnectDelay: 0,      // the server frees your seat on disconnect, so rejoin manually
+            onConnect: () => {
+                setStatus('\u25CF live', true);
+                client.subscribe('/topic/messages', frame => addMessage(JSON.parse(frame.body)));
+                client.subscribe('/topic/users', frame => showUsers(JSON.parse(frame.body)));
+                client.subscribe('/user/queue/errors', frame => showError(frame.body));
+                loadUsers();
+                loadHistory();
+            },
+            onStompError: frame => showError(frame.headers['message'] || 'Connection error'),
+            onWebSocketClose: () => {
+                if (me) { setStatus('disconnected - reload the page', false); }
+            }
+        });
+        client.activate();
+    }
+
+    async function loadHistory() {
+        try {
+            const messages = await request('/messages');
+            messages.forEach(addMessage);
+        } catch (e) { /* ignore */ }
+    }
+
+    async function loadUsers() {
+        try {
+            showUsers(await request('/users'));
+        } catch (e) { /* ignore */ }
+    }
+
+    function showUsers(users) {
+        $('online').textContent = users.length + ' online: ' + users.map(u => u.username).join(', ');
+    }
+
     /* ---------- messages ---------- */
-    function formatTime(sentAt) {
+    function toDate(value) {
+        if (Array.isArray(value)) {
+            return new Date(Date.UTC(value[0], value[1] - 1, value[2], value[3] || 0, value[4] || 0, value[5] || 0));
+        }
         // The server sends LocalDateTime in UTC (EC2 default), so mark it as UTC
-        const iso = /Z|[+-]\d\d:?\d\d$/.test(sentAt) ? sentAt : sentAt + 'Z';
-        return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const iso = /Z|[+-]\d\d:?\d\d$/.test(value) ? value : value + 'Z';
+        return new Date(iso);
     }
 
     function addMessage(m) {
@@ -201,7 +230,7 @@
         who.textContent = m.sender;
         const time = document.createElement('span');
         time.className = 'time';
-        time.textContent = formatTime(m.sentAt);
+        time.textContent = toDate(m.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         who.appendChild(time);
         const text = document.createElement('div');
         text.className = 'text';
@@ -212,61 +241,26 @@
         if (nearBottom || mine) { box.scrollTop = box.scrollHeight; }
     }
 
-    async function loadMessages() {
-        try {
-            const messages = await request('/messages');
-            messages.forEach(addMessage);
-        } catch (e) { /* temporary network problem: try again on next poll */ }
+    function showError(message) {
+        $('chatError').textContent = message;
+        setTimeout(() => { $('chatError').textContent = ''; }, 5000);
     }
 
-    async function loadUsers() {
-        try {
-            const users = await request('/users');
-            $('online').textContent = users.length + ' online: ' + users.map(u => u.username).join(', ');
-        } catch (e) { /* ignore */ }
-    }
-
-    async function sendMessage(content) {
-        try {
-            return await request('/messages', 'POST', { sender: me, content: content });
-        } catch (e) {
-            if (e.status !== 403) { throw e; }
-            // our seat was freed (e.g. page refresh): join again and retry once
-            await request('/join', 'POST', { username: me });
-            return await request('/messages', 'POST', { sender: me, content: content });
-        }
-    }
-
-    $('sendForm').onsubmit = async e => {
+    $('sendForm').onsubmit = e => {
         e.preventDefault();
         const content = $('messageInput').value.trim();
         if (!content) { return; }
-        $('sendBtn').disabled = true;
-        $('chatError').textContent = '';
-        try {
-            const saved = await sendMessage(content);
-            addMessage(saved);
-            $('messageInput').value = '';
-        } catch (err) {
-            $('chatError').textContent = err.message;
+        if (!client || !client.connected) {
+            showError('Not connected. Reload the page and join again.');
+            return;
         }
-        $('sendBtn').disabled = false;
+        client.publish({
+            destination: '/app/chat.send',
+            body: JSON.stringify({ sender: me, content: content })
+        });
+        $('messageInput').value = '';
         $('messageInput').focus();
     };
-
-
-    (async function init() {
-        if (!me) { return; }
-        try {
-            await join(me);
-        } catch (e) {
-            if (e.status === 409 && /already/.test(e.message)) {
-                showChat();
-            } else {
-                showJoin(e.message);
-            }
-        }
-    })();
 </script>
 </body>
 </html>
