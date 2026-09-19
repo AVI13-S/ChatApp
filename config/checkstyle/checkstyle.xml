@@ -12,6 +12,10 @@
         <property name="format" value="\s+$"/>
         <property name="message" value="Line has trailing spaces."/>
     </module>
+    <module name="LineLength">
+        <property name="max" value="120"/>
+        <property name="ignorePattern" value="^package.*|^import.*"/>
+    </module>
 
     <module name="TreeWalker">
         <module name="PackageDeclaration"/>
@@ -20,7 +24,6 @@
         <module name="RedundantImport"/>
         <module name="UnusedImports"/>
 
-        <!-- Naming -->
         <module name="PackageName"/>
         <module name="TypeName"/>
         <module name="MethodName"/>
@@ -29,10 +32,6 @@
         <module name="LocalVariableName"/>
         <module name="ConstantName"/>
 
-        <module name="LineLength">
-            <property name="max" value="120"/>
-            <property name="ignorePattern" value="^package.*|^import.*"/>
-        </module>
         <module name="MethodLength">
             <property name="max" value="50"/>
         </module>
