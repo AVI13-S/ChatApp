@@ -23,7 +23,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ChatService {
 
-    private static final int MAX_USERS = 6;
+    private static final int MAX_USERS = 10;
 
     private final ChatUserRepository userRepository;
     private final ChatMessageRepository messageRepository;
