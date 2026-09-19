@@ -1,4 +1,3 @@
-
 package com.ChatApp.demo.dto;
 
 import jakarta.validation.constraints.NotBlank;
