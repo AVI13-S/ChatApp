@@ -6,261 +6,341 @@
     <title>Group Chat</title>
     <style>
         :root {
-            --bg: #eef1f5; --card: #ffffff; --text: #1f2937; --muted: #6b7280;
-            --accent: #2563eb; --mine: #dbeafe; --other: #f3f4f6; --line: #e5e7eb; --error: #dc2626; --ok: #16a34a;
+            --bg: #dbeafe; --card: #ffffff; --text: #1f2937; --muted: #6b7280;
+            --accent: #2563eb; --accent-dark: #1d4ed8; --other: #f3f4f6; --line: #e5e7eb; --error: #dc2626;
         }
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg: #0f1216; --card: #181d24; --text: #e5e7eb; --muted: #9ca3af;
-                --accent: #3b82f6; --mine: #1e3a5f; --other: #232a33; --line: #2a323d; --error: #f87171; --ok: #4ade80;
+                --accent: #3b82f6; --accent-dark: #2563eb; --other: #232a33; --line: #2a323d; --error: #f87171;
             }
         }
         * { box-sizing: border-box; }
         html, body { height: 100%; margin: 0; }
         body {
-            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            font-family: system-ui, "Segoe UI", sans-serif;
             background: var(--bg); color: var(--text);
             display: flex; justify-content: center; align-items: center; padding: 12px;
         }
         .card {
-            background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-            width: 100%; max-width: 640px; height: min(88dvh, 720px);
-            display: flex; flex-direction: column; overflow: hidden;
+            width: 100%; max-width: 640px; height: min(90dvh, 740px);
+            background: var(--card); border-radius: 20px; overflow: hidden;
+            box-shadow: 0 12px 32px rgba(37, 99, 235, 0.18);
+            display: flex; flex-direction: column;
         }
+
         header {
-            padding: 12px 16px; border-bottom: 1px solid var(--line);
-            display: flex; justify-content: space-between; align-items: center; gap: 10px;
+            padding: 14px 18px; border-bottom: 1px solid var(--line);
+            display: flex; align-items: center; gap: 12px;
         }
-        header h1 { font-size: 17px; margin: 0; }
-        #status { font-size: 12px; color: var(--muted); }
-        #status.live { color: var(--ok); }
-        #online { font-size: 12px; color: var(--muted); text-align: right; flex: 1; }
-        #joinView { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; gap: 12px; }
-        #chatView { flex: 1; display: none; flex-direction: column; min-height: 0; }
+        .logo {
+            width: 42px; height: 42px; border-radius: 50%; color: #fff; font-size: 18px; font-weight: bold;
+            background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+            display: flex; align-items: center; justify-content: center;
+        }
+        .title { flex: 1; }
+        .title h1 { margin: 0; font-size: 17px; }
+        .title span { font-size: 12px; color: var(--muted); }
+        #status { font-size: 12px; color: var(--muted); display: none; align-items: center; gap: 5px; }
+        #dot { width: 8px; height: 8px; border-radius: 50%; background: #fbbf24; }
+        #leaveBtn {
+            display: none; background: none; color: var(--accent); cursor: pointer;
+            border: 1px solid var(--accent); border-radius: 999px; padding: 5px 14px; font-size: 13px;
+        }
+
+        #joinView {
+            flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            padding: 30px; gap: 12px; text-align: center;
+        }
+        #joinView h2 { margin: 0; }
+        #joinView p { margin: 0; max-width: 300px; font-size: 14px; color: var(--muted); }
+        #joinView input, #joinView button { width: 100%; max-width: 300px; }
+
         input[type=text] {
-            padding: 12px; border: 1px solid var(--line); border-radius: 10px;
-            background: var(--bg); color: var(--text); font-size: 16px; width: 100%;
+            padding: 12px 16px; font-size: 16px; color: var(--text); background: var(--other);
+            border: 1px solid var(--line); border-radius: 12px;
         }
-        button {
-            padding: 12px 18px; border: 0; border-radius: 10px; background: var(--accent);
-            color: #fff; font-size: 16px; cursor: pointer;
+        input[type=text]:focus { outline: 2px solid var(--accent); }
+        .blue-button {
+            padding: 12px 18px; font-size: 16px; color: #fff; background: var(--accent);
+            border: 0; border-radius: 12px; cursor: pointer;
         }
-        button:disabled { opacity: .6; cursor: default; }
-        button.ghost {
-            background: transparent; color: var(--muted); border: 1px solid var(--line);
-            padding: 6px 12px; font-size: 13px;
-        }
-        #messages { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-        .msg { max-width: 80%; padding: 8px 12px; border-radius: 12px; background: var(--other); align-self: flex-start; }
-        .msg.mine { background: var(--mine); align-self: flex-end; }
-        .who { font-size: 12px; font-weight: 600; color: var(--muted); }
-        .time { font-weight: 400; margin-left: 6px; font-size: 11px; }
-        .text { white-space: pre-wrap; word-break: break-word; }
-        .empty { margin: auto; color: var(--muted); font-size: 14px; }
-        #sendForm { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
-        .error { color: var(--error); font-size: 13px; min-height: 18px; padding: 0 16px; }
+        .blue-button:hover { background: var(--accent-dark); }
+        .error { min-height: 18px; padding: 0 18px; font-size: 13px; color: var(--error); }
         #joinError { padding: 0; }
+
+        #chatView { flex: 1; min-height: 0; display: none; flex-direction: column; }
+        #messages {
+            flex: 1; overflow-y: auto; padding: 16px;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .empty { margin: auto; font-size: 14px; color: var(--muted); }
+        .message { max-width: 78%; padding: 8px 12px; border-radius: 16px 16px 16px 4px; background: var(--other); }
+        .message.mine { align-self: flex-end; color: #fff; background: var(--accent); border-radius: 16px 16px 4px 16px; }
+        .sender { font-size: 12px; font-weight: bold; margin-bottom: 2px; }
+        .text { white-space: pre-wrap; word-break: break-word; }
+        .info { display: flex; justify-content: flex-end; gap: 10px; margin-top: 2px; font-size: 11px; opacity: 0.75; }
+        .delete { display: none; padding: 0; font-size: 11px; color: #fff; background: none; border: 0; cursor: pointer; }
+        .message.mine:hover .delete { display: inline; }
+        @media (hover: none) { .message.mine .delete { display: inline; } }
+
+        #sendForm { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); }
+        #messageInput { flex: 1; border-radius: 999px; }
+        #sendBtn { width: 46px; height: 46px; padding: 0; border-radius: 50%; }
     </style>
 </head>
 <body>
 <div class="card">
     <header>
-        <h1>Group Chat</h1>
-        <div id="online"></div>
-        <span id="status"></span>
-        <button id="leaveBtn" class="ghost" style="display:none">Leave</button>
+        <div class="logo">G</div>
+        <div class="title">
+            <h1>Group Chat</h1>
+            <span id="subtitle">Chat with your friends</span>
+        </div>
+        <div id="status"><span id="dot"></span><span id="statusText"></span></div>
+        <button id="leaveBtn">Leave</button>
     </header>
 
     <div id="joinView">
-        <div>Choose a name to join the chat</div>
-        <input type="text" id="usernameInput" placeholder="Your name (max 30 characters)" maxlength="30" autocomplete="off">
-        <button id="joinBtn">Join chat</button>
+        <h2>Join the chat</h2>
+        <p>Enter a name to start. You will only see the messages sent after you join.</p>
+        <input type="text" id="nameInput" placeholder="Your name" maxlength="30" autocomplete="off">
+        <button class="blue-button" id="joinBtn">Join</button>
         <div class="error" id="joinError"></div>
     </div>
 
     <div id="chatView">
-        <div id="messages"><div class="empty" id="emptyNote">No messages yet. Say hi!</div></div>
+        <div id="messages">
+            <div class="empty" id="emptyText">No messages yet</div>
+        </div>
         <div class="error" id="chatError"></div>
         <form id="sendForm">
-            <input type="text" id="messageInput" placeholder="Type a message..." maxlength="1000" autocomplete="off">
-            <button type="submit" id="sendBtn">Send</button>
+            <input type="text" id="messageInput" placeholder="Type a message" maxlength="1000" autocomplete="off">
+            <button class="blue-button" type="submit" id="sendBtn">&#10148;</button>
         </form>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
 <script>
-    const API = '/api/chat';
+    // on localhost and EC2 the api is on the same address, on Render we call the EC2 server
+    const EC2_URL = 'https://avi-chatapp.duckdns.org';
+    let serverUrl = EC2_URL;
+    if (location.hostname === 'localhost' || location.hostname === 'avi-chatapp.duckdns.org') {
+        serverUrl = location.origin;
+    }
+    const apiUrl = serverUrl + '/api/chat';
+    const wsUrl = serverUrl.replace('http', 'ws') + '/ws';
 
-    const $ = id => document.getElementById(id);
-    const seen = new Set();
-    let me = null;
-    let client = null;
+    const nameColors = ['#1d4ed8', '#0369a1', '#4338ca', '#0e7490', '#6d28d9', '#0f766e'];
 
-    /* ---------- small REST helper (join, leave, history, users) ---------- */
-    async function request(path, method, body) {
-        const res = await fetch(API + path, {
-            method: method || 'GET',
+    let myName = '';
+    let stompClient = null;
+
+    function el(id) {
+        return document.getElementById(id);
+    }
+
+    async function callApi(path, method, body) {
+        const response = await fetch(apiUrl + path, {
+            method: method,
             headers: { 'Content-Type': 'application/json' },
             body: body ? JSON.stringify(body) : undefined
         });
-        if (res.status === 204) {
+        if (response.status === 204) {
             return null;
         }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            const detail = data.errors && data.errors.length
-                ? data.errors.map(e => e.field + ' ' + e.defaultMessage).join(', ')
-                : data.message;
-            throw new Error(detail || ('Request failed (' + res.status + ')'));
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.message || 'Something went wrong');
         }
         return data;
     }
 
-    /* ---------- join / leave ---------- */
-    $('joinBtn').onclick = async () => {
-        $('joinError').textContent = '';
-        if (typeof StompJs === 'undefined') {
-            $('joinError').textContent = 'Could not load the chat library. Check your internet connection and reload.';
+    async function joinChat() {
+        const name = el('nameInput').value.trim();
+        if (name === '') {
+            el('joinError').textContent = 'Please enter a name';
             return;
         }
-        const name = $('usernameInput').value.trim();
-        $('joinBtn').disabled = true;
-        try {
-            await request('/join', 'POST', { username: name });
-            me = name;
-            showChat();
-            connect();
-        } catch (e) {
-            $('joinError').textContent = e.message;
+        if (typeof StompJs === 'undefined') {
+            el('joinError').textContent = 'Could not load the chat library. Check your internet and reload.';
+            return;
         }
-        $('joinBtn').disabled = false;
-    };
-    $('usernameInput').addEventListener('keydown', e => {
-        if (e.key === 'Enter') { $('joinBtn').click(); }
-    });
 
-    $('leaveBtn').onclick = async () => {
-        try { await request('/leave', 'POST', { username: me }); } catch (e) { /* ignore */ }
-        if (client) { client.deactivate(); }
+        try {
+            await callApi('/join', 'POST', { username: name });
+        } catch (error) {
+            el('joinError').textContent = error.message;
+            return;
+        }
+
+        myName = name;
+        el('joinView').style.display = 'none';
+        el('chatView').style.display = 'flex';
+        el('leaveBtn').style.display = 'block';
+        el('status').style.display = 'flex';
+        el('subtitle').textContent = 'You are ' + myName;
+        el('messageInput').focus();
+        connectSocket();
+    }
+
+    async function leaveChat() {
+        try {
+            await callApi('/leave', 'POST', { username: myName });
+        } catch (error) {
+            // nothing to do, we are leaving anyway
+        }
+        if (stompClient) {
+            stompClient.deactivate();
+        }
         location.reload();
-    };
-
-    function showChat() {
-        $('joinView').style.display = 'none';
-        $('chatView').style.display = 'flex';
-        $('leaveBtn').style.display = 'inline-block';
-        $('messageInput').focus();
     }
 
-    /* ---------- WebSocket (STOMP) ---------- */
-    function setStatus(text, live) {
-        $('status').textContent = text;
-        $('status').className = live ? 'live' : '';
+    function setStatus(text, color) {
+        el('statusText').textContent = text;
+        el('dot').style.background = color;
     }
 
-    function connect() {
-        // https page => secure wss:// connection, http page => ws://
-        const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
-        setStatus('connecting...', false);
+    function connectSocket() {
+        setStatus('connecting', '#fbbf24');
 
-        client = new StompJs.Client({
-            brokerURL: scheme + location.host + '/ws',
-            connectHeaders: { username: me },
-            reconnectDelay: 0,      // the server frees your seat on disconnect, so rejoin manually
+        stompClient = new StompJs.Client({
+            brokerURL: wsUrl,
+            connectHeaders: { username: myName },
+            reconnectDelay: 0,
             onConnect: () => {
-                setStatus('\u25CF live', true);
-                client.subscribe('/topic/messages', frame => addMessage(JSON.parse(frame.body)));
-                client.subscribe('/topic/users', frame => showUsers(JSON.parse(frame.body)));
-                client.subscribe('/user/queue/errors', frame => showError(frame.body));
-                loadUsers();
-                loadHistory();
+                setStatus('live', '#22c55e');
+                stompClient.subscribe('/topic/messages', frame => showMessage(JSON.parse(frame.body)));
+                stompClient.subscribe('/topic/deleted', frame => removeMessage(cleanText(frame.body)));
+                stompClient.subscribe('/user/queue/errors', frame => handleError(cleanText(frame.body)));
             },
-            onStompError: frame => showError(frame.headers['message'] || 'Connection error'),
             onWebSocketClose: () => {
-                if (me) { setStatus('disconnected - reload the page', false); }
+                if (myName !== '') {
+                    setStatus('disconnected, reload the page', '#ef4444');
+                }
             }
         });
-        client.activate();
+        stompClient.activate();
     }
 
-    async function loadHistory() {
-        try {
-            const messages = await request('/messages');
-            messages.forEach(addMessage);
-        } catch (e) { /* ignore */ }
+    // text that comes through the websocket can have quotes around it
+    function cleanText(text) {
+        return text.replace(/^"|"$/g, '');
     }
 
-    async function loadUsers() {
-        try {
-            showUsers(await request('/users'));
-        } catch (e) { /* ignore */ }
-    }
-
-    function showUsers(users) {
-        $('online').textContent = users.length + ' online: ' + users.map(u => u.username).join(', ');
-    }
-
-    /* ---------- messages ---------- */
-    function toDate(value) {
-        if (Array.isArray(value)) {
-            return new Date(Date.UTC(value[0], value[1] - 1, value[2], value[3] || 0, value[4] || 0, value[5] || 0));
+    function nameColor(name) {
+        let total = 0;
+        for (let i = 0; i < name.length; i++) {
+            total = total + name.charCodeAt(i);
         }
-        // The server sends LocalDateTime in UTC (EC2 default), so mark it as UTC
-        const iso = /Z|[+-]\d\d:?\d\d$/.test(value) ? value : value + 'Z';
-        return new Date(iso);
+        return nameColors[total % nameColors.length];
     }
 
-    function addMessage(m) {
-        if (seen.has(m.id)) {
-            return;
+    function showMessage(message) {
+        const isMine = message.sender.toLowerCase() === myName.toLowerCase();
+
+        const box = document.createElement('div');
+        box.className = isMine ? 'message mine' : 'message';
+        box.dataset.id = message.id;
+
+        if (!isMine) {
+            const sender = document.createElement('div');
+            sender.className = 'sender';
+            sender.style.color = nameColor(message.sender);
+            sender.textContent = message.sender;
+            box.appendChild(sender);
         }
-        seen.add(m.id);
-        const empty = $('emptyNote');
-        if (empty) { empty.remove(); }
 
-        const box = $('messages');
-        const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 100;
-        const mine = m.sender.toLowerCase() === (me || '').toLowerCase();
-
-        const div = document.createElement('div');
-        div.className = 'msg' + (mine ? ' mine' : '');
-        const who = document.createElement('div');
-        who.className = 'who';
-        who.textContent = m.sender;
-        const time = document.createElement('span');
-        time.className = 'time';
-        time.textContent = toDate(m.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        who.appendChild(time);
         const text = document.createElement('div');
         text.className = 'text';
-        text.textContent = m.content;      // textContent => no HTML injection
-        div.append(who, text);
-        box.appendChild(div);
+        text.textContent = message.content;
+        box.appendChild(text);
 
-        if (nearBottom || mine) { box.scrollTop = box.scrollHeight; }
+        const info = document.createElement('div');
+        info.className = 'info';
+        if (isMine) {
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'delete';
+            deleteButton.textContent = 'Delete';
+            deleteButton.onclick = () => deleteMessage(message.id);
+            info.appendChild(deleteButton);
+        }
+        const time = document.createElement('span');
+        time.textContent = new Date(message.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        info.appendChild(time);
+        box.appendChild(info);
+
+        const list = el('messages');
+        const emptyText = el('emptyText');
+        if (emptyText) {
+            emptyText.remove();
+        }
+        const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+        list.appendChild(box);
+        if (atBottom || isMine) {
+            list.scrollTop = list.scrollHeight;
+        }
     }
 
-    function showError(message) {
-        $('chatError').textContent = message;
-        setTimeout(() => { $('chatError').textContent = ''; }, 5000);
+    function removeMessage(id) {
+        const box = document.querySelector('[data-id="' + id + '"]');
+        if (box) {
+            box.remove();
+        }
     }
 
-    $('sendForm').onsubmit = e => {
-        e.preventDefault();
-        const content = $('messageInput').value.trim();
-        if (!content) { return; }
-        if (!client || !client.connected) {
-            showError('Not connected. Reload the page and join again.');
+    async function deleteMessage(id) {
+        try {
+            await callApi('/messages/' + id + '?username=' + encodeURIComponent(myName), 'DELETE');
+        } catch (error) {
+            showError(error.message);
+        }
+    }
+
+    function sendMessage(event) {
+        event.preventDefault();
+        const text = el('messageInput').value.trim();
+        if (text === '') {
             return;
         }
-        client.publish({
+        if (!stompClient || !stompClient.connected) {
+            showError('Not connected, please reload the page');
+            return;
+        }
+        stompClient.publish({
             destination: '/app/chat.send',
-            body: JSON.stringify({ sender: me, content: content })
+            body: JSON.stringify({ sender: myName, content: text })
         });
-        $('messageInput').value = '';
-        $('messageInput').focus();
+        el('messageInput').value = '';
+    }
+
+    function showError(text) {
+        el('chatError').textContent = text;
+        setTimeout(() => { el('chatError').textContent = ''; }, 5000);
+    }
+
+    // if the server forgot us (after a refresh for example) join again
+    async function handleError(text) {
+        showError(text);
+        if (text.toLowerCase().includes('join the chat first')) {
+            try {
+                await callApi('/join', 'POST', { username: myName });
+                showError('You are back in the chat, please send your message again');
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+    }
+
+    el('joinBtn').onclick = joinChat;
+    el('nameInput').onkeydown = event => {
+        if (event.key === 'Enter') {
+            joinChat();
+        }
     };
+    el('leaveBtn').onclick = leaveChat;
+    el('sendForm').onsubmit = sendMessage;
 </script>
 </body>
 </html>

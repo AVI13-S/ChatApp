@@ -14,10 +14,6 @@ public class ChatMapper {
     }
 
     public MessageResponse toResponse(ChatMessage message) {
-        return new MessageResponse(
-                message.getId(),
-                message.getSender(),
-                message.getContent(),
-                message.getSentAt());
+        return new MessageResponse(message.getId(), message.getSender(), message.getContent(), message.getSentAt());
     }
 }

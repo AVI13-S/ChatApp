@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -29,11 +29,11 @@ public class ChatMessage {
     private String content;
 
     @Column(nullable = false)
-    private LocalDateTime sentAt;
+    private Instant sentAt;
 
     public ChatMessage(String sender, String content) {
         this.sender = sender;
         this.content = content;
-        this.sentAt = LocalDateTime.now();
+        this.sentAt = Instant.now();
     }
 }

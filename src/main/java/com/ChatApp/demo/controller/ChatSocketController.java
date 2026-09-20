@@ -17,17 +17,22 @@ public class ChatSocketController {
 
     private final ChatService chatService;
 
+    // the browser sends its messages to /app/chat.send
     @MessageMapping("/chat.send")
     public void send(@Valid @Payload MessageRequest request) {
         chatService.sendMessage(request);
     }
 
+    // errors go back only to the person who sent the message
+    @MessageExceptionHandler(ResponseStatusException.class)
+    @SendToUser("/queue/errors")
+    public String handleStatusError(ResponseStatusException ex) {
+        return ex.getReason();
+    }
+
     @MessageExceptionHandler
     @SendToUser("/queue/errors")
-    public String handleError(Exception ex) {
-        if (ex instanceof ResponseStatusException statusException) {
-            return statusException.getReason();
-        }
-        return "Invalid message: sender and content are required (content max 1000 characters).";
+    public String handleOtherError(Exception ex) {
+        return "Message could not be sent";
     }
 }

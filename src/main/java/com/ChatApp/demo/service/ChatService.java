@@ -13,71 +13,92 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class ChatService {
 
     private static final int MAX_USERS = 10;
-    private static final String USERS_TOPIC = "/topic/users";
-    private static final String MESSAGES_TOPIC = "/topic/messages";
 
     private final ChatUserRepository userRepository;
     private final ChatMessageRepository messageRepository;
     private final ChatMapper mapper;
     private final SimpMessagingTemplate messagingTemplate;
 
-    public synchronized UserResponse join(UserRequest request) {
-        String username = request.username().trim();
+    public UserResponse join(UserRequest request) {
+        String name = request.username().trim();
 
-        if (userRepository.existsByUsernameIgnoreCase(username)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "username is already in the chat");
+        ChatUser user = userRepository.findByUsernameIgnoreCase(name);
+        if (user != null) {
+            return mapper.toResponse(user);
         }
+
         if (userRepository.count() >= MAX_USERS) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "chat room is full (max " + MAX_USERS + " people)");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chat room is full, try again later");
         }
 
-        ChatUser saved = userRepository.save(new ChatUser(username));
-        broadcastUsers();
-        return mapper.toResponse(saved);
+        user = userRepository.save(new ChatUser(name));
+        return mapper.toResponse(user);
     }
 
-    @Transactional
-    public void leave(UserRequest request) {
-        userRepository.deleteByUsernameIgnoreCase(request.username().trim());
-        broadcastUsers();
+    public void leave(String username) {
+        ChatUser user = userRepository.findByUsernameIgnoreCase(username.trim());
+        if (user == null) {
+            return;
+        }
+        userRepository.delete(user);
+        if (userRepository.count() == 0) {
+            messageRepository.deleteAll();
+        }
     }
 
     public List<UserResponse> getUsers() {
-        return userRepository.findAll().stream().map(mapper::toResponse).toList();
+        List<UserResponse> users = new ArrayList<>();
+        for (ChatUser user : userRepository.findAll()) {
+            users.add(mapper.toResponse(user));
+        }
+        return users;
     }
 
     public MessageResponse sendMessage(MessageRequest request) {
-        String sender = request.sender().trim();
-
-        if (!userRepository.existsByUsernameIgnoreCase(sender)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "join the chat first");
+        ChatUser user = userRepository.findByUsernameIgnoreCase(request.sender().trim());
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Join the chat first");
         }
 
-        ChatMessage saved = messageRepository.save(new ChatMessage(sender, request.content().trim()));
-        MessageResponse response = mapper.toResponse(saved);
-        messagingTemplate.convertAndSend(MESSAGES_TOPIC, response);
+        ChatMessage message = new ChatMessage(user.getUsername(), request.content().trim());
+        message = messageRepository.save(message);
+
+        MessageResponse response = mapper.toResponse(message);
+        messagingTemplate.convertAndSend("/topic/messages", response);
         return response;
     }
 
-    public List<MessageResponse> getLatestMessages() {
-        List<ChatMessage> messages = new ArrayList<>(messageRepository.findTop50ByOrderBySentAtDesc());
-        Collections.reverse(messages);
-        return messages.stream().map(mapper::toResponse).toList();
+    public List<MessageResponse> getMessages() {
+        List<MessageResponse> messages = new ArrayList<>();
+        for (ChatMessage message : messageRepository.findAllByOrderBySentAtAsc()) {
+            messages.add(mapper.toResponse(message));
+        }
+        return messages;
     }
 
-    private void broadcastUsers() {
-        messagingTemplate.convertAndSend(USERS_TOPIC, getUsers());
+    public void deleteMessage(UUID id, String username) {
+        if (!messageRepository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found");
+        }
+
+        ChatMessage message = messageRepository.findById(id).get();
+        if (!message.getSender().equalsIgnoreCase(username.trim())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only delete your own messages");
+        }
+
+        messageRepository.delete(message);
+
+        messagingTemplate.convertAndSend("/topic/deleted", id.toString());
     }
 }

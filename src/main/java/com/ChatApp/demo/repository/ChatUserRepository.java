@@ -7,7 +7,5 @@ import java.util.UUID;
 
 public interface ChatUserRepository extends JpaRepository<ChatUser, UUID> {
 
-    boolean existsByUsernameIgnoreCase(String username);
-
-    void deleteByUsernameIgnoreCase(String username);
+    ChatUser findByUsernameIgnoreCase(String username);
 }

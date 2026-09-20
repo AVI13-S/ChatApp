@@ -1,6 +1,5 @@
 package com.ChatApp.demo.config;
 
-import com.ChatApp.demo.dto.UserRequest;
 import com.ChatApp.demo.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
@@ -31,8 +30,8 @@ public class WebSocketEventListener {
     @EventListener
     public void onDisconnect(SessionDisconnectEvent event) {
         String username = usernameBySession.remove(event.getSessionId());
-        if (username != null) {
-            chatService.leave(new UserRequest(username));
+        if (username != null && !usernameBySession.containsValue(username)) {
+            chatService.leave(username);
         }
     }
 }
